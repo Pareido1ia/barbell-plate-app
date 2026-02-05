@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Modal, Pressable, FlatList } from 'react-native';
-import Svg, { Rect, G, Path, Line } from 'react-native-svg';
+import Svg, { Rect, G, Path, Line, Circle } from 'react-native-svg';
 import {
   StatusBar,
   StyleSheet,
@@ -50,7 +50,11 @@ function AppContent() {
     const str = rounded.toFixed(2);
     return str.replace(/\.?0+$/, '');
   };
-  const Icon = ({ name, size = 18, color = '#fff' }: { name: 'plus' | 'edit' | 'check' | 'close'; size?: number; color?: string }) => {
+  const Icon = ({
+    name,
+    size = 18,
+    color = '#fff',
+  }: { name: 'plus' | 'edit' | 'check' | 'close' | 'caretUp' | 'caretDown' | 'gear' | 'barbell'; size?: number; color?: string }) => {
     const strokeWidth = 3;
     switch (name) {
       case 'plus':
@@ -92,6 +96,61 @@ function AppContent() {
           <Svg width={size} height={size} viewBox="0 0 24 24">
             <Line x1="6" y1="6" x2="18" y2="18" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
             <Line x1="18" y1="6" x2="6" y2="18" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+          </Svg>
+        );
+      case 'caretDown':
+        return (
+          <Svg width={size} height={size} viewBox="0 0 24 24">
+            <Path
+              d="M6 10l6 6 6-6"
+              stroke={color}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </Svg>
+        );
+      case 'caretUp':
+        return (
+          <Svg width={size} height={size} viewBox="0 0 24 24">
+            <Path
+              d="M6 14l6-6 6 6"
+              stroke={color}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </Svg>
+        );
+      case 'gear':
+        return (
+          <Svg width={size} height={size} viewBox="0 0 24 24">
+            <Circle cx="12" cy="12" r="3.5" stroke={color} strokeWidth={strokeWidth} fill="none" />
+            <Circle cx="12" cy="12" r="7" stroke={color} strokeWidth={strokeWidth} fill="none" />
+            {/* Subtle nubs */}
+            <Line x1="12" y1="2.5" x2="12" y2="4.2" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+            <Line x1="12" y1="19.8" x2="12" y2="21.5" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+            <Line x1="2.5" y1="12" x2="4.2" y2="12" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+            <Line x1="19.8" y1="12" x2="21.5" y2="12" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+            <Line x1="5.5" y1="5.5" x2="6.8" y2="6.8" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+            <Line x1="18.5" y1="5.5" x2="17.2" y2="6.8" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+            <Line x1="5.5" y1="18.5" x2="6.8" y2="17.2" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+            <Line x1="18.5" y1="18.5" x2="17.2" y2="17.2" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+          </Svg>
+        );
+      case 'barbell':
+        return (
+          <Svg width={size} height={size} viewBox="0 0 24 24">
+            <Path
+              d="M4 9v6M6 7v10M18 7v10M20 9v6M6 12h12"
+              stroke={color}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
           </Svg>
         );
     }
@@ -154,6 +213,7 @@ function AppContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingWeight, setEditingWeight] = useState('');
   const [showLiftDropdown, setShowLiftDropdown] = useState(false);
+  const [disabledPlates, setDisabledPlates] = useState<number[]>([]);
 
   // Load last used barbell type on mount
   useEffect(() => {
@@ -174,6 +234,13 @@ function AppContent() {
           try {
             const parsed = JSON.parse(storedLifts);
             if (Array.isArray(parsed)) setLifts(parsed);
+          } catch {}
+        }
+        const storedDisabled = await AsyncStorage.getItem('disabledPlates');
+        if (storedDisabled) {
+          try {
+            const parsed = JSON.parse(storedDisabled);
+            if (Array.isArray(parsed)) setDisabledPlates(parsed);
           } catch {}
         }
       } catch {}
@@ -199,6 +266,9 @@ function AppContent() {
   useEffect(() => {
     AsyncStorage.setItem('lifts', JSON.stringify(lifts));
   }, [lifts]);
+  useEffect(() => {
+    AsyncStorage.setItem('disabledPlates', JSON.stringify(disabledPlates));
+  }, [disabledPlates]);
 
   const handlePercentageChange = (delta: number) => {
     dismissKeyboard();
@@ -223,7 +293,11 @@ function AppContent() {
     { weight: 5, color: '#ECECEC', label: '5kg (white)' },
     { weight: 2.5, color: '#d2443a', label: '2.5kg (light red)' },
     { weight: 1.25, color: '#000000', label: '1.25kg (black)' },
+    { weight: 1, color: '#0f3d0f', label: '1kg (dark green)' },
+    { weight: 0.5, color: '#7a0f0f', label: '0.5kg (dark red)' },
+    { weight: 0.25, color: '#0b234f', label: '0.25kg (dark blue)' },
   ];
+  const enabledPlateOptions = plateOptions.filter((p) => !disabledPlates.includes(p.weight));
 
   // Calculate target weight, capped at 300kg
   const inputWeight = parseFloat(weight) || 0;
@@ -243,13 +317,13 @@ function AppContent() {
   // - If weightNeeded is within a single full set (78.75 kg), use greedy with max 1 of each plate.
   // - If it exceeds that, place one of each plate first, then greedy-add duplicates from heaviest down.
         function calculatePlates(weightNeeded: number) {
-          const totalSingleSet = plateOptions.reduce((sum, p) => sum + p.weight, 0); // 78.75
+          const totalSingleSet = enabledPlateOptions.reduce((sum, p) => sum + p.weight, 0);
           const plateCounts: { [weight: number]: { color: string; count: number } } = {};
           const baseCounts: { [weight: number]: number } = {}; // counts that must be preserved (the “one of each” set)
           const epsilon = 0.0001; // float guard
           const addPlateCount = (plateWeight: number, delta: number) => {
             if (delta === 0) return;
-            const plate = plateOptions.find((p) => p.weight === plateWeight)!;
+            const plate = enabledPlateOptions.find((p) => p.weight === plateWeight)!;
             if (!plateCounts[plateWeight]) {
               plateCounts[plateWeight] = { color: plate.color, count: 0 };
             }
@@ -259,7 +333,7 @@ function AppContent() {
           if (weightNeeded <= totalSingleSet + epsilon) {
             // Greedy without duplicates (max 1 each)
             let remaining = weightNeeded;
-            for (const plate of plateOptions) {
+            for (const plate of enabledPlateOptions) {
               if (remaining + epsilon >= plate.weight) {
                 addPlateCount(plate.weight, 1);
                 remaining = Math.round((remaining - plate.weight) * 100) / 100;
@@ -267,13 +341,13 @@ function AppContent() {
             }
           } else {
             // Phase A: one of each (record as base that should not be consolidated away)
-            plateOptions.forEach((plate) => {
+            enabledPlateOptions.forEach((plate) => {
               addPlateCount(plate.weight, 1);
               baseCounts[plate.weight] = 1;
             });
             // Phase B: greedy duplicates on the remainder
             let remaining = Math.round((weightNeeded - totalSingleSet) * 100) / 100;
-            for (const plate of plateOptions) {
+            for (const plate of enabledPlateOptions) {
               if (remaining + epsilon < plate.weight) continue;
               const extra = Math.floor((remaining + epsilon) / plate.weight);
               if (extra > 0) {
@@ -283,7 +357,7 @@ function AppContent() {
             }
 
             // Consolidate only EXCESS small-plate pairs upward; never consume the base 1-per-plate set.
-            const ascWeights = [...plateOptions].map((p) => p.weight).reverse(); // lightest -> heaviest
+            const ascWeights = [...enabledPlateOptions].map((p) => p.weight).reverse(); // lightest -> heaviest
             for (let i = 0; i < ascWeights.length - 1; i++) {
               const cur = ascWeights[i];
               const next = ascWeights[i + 1];
@@ -298,7 +372,7 @@ function AppContent() {
             }
           }
 
-          return plateOptions
+          return enabledPlateOptions
             .filter((p) => plateCounts[p.weight])
             .map((p) => ({ weight: p.weight, color: p.color, count: plateCounts[p.weight].count }));
         }
@@ -311,9 +385,31 @@ function AppContent() {
   const bwMultiple = bwNumber > 0 ? round2(targetWeight / bwNumber) : 0;
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false} disabled={showLiftDropdown}>
       <View style={[styles.container, styles.darkBg, { paddingTop: 24 + insets.top }]}>
-        {/* Weight input label above field */}
+      {/* Header actions */}
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8, gap: 8 }}>
+        <TouchableOpacity
+          onPress={() => {
+            dismissKeyboard();
+            setShowLiftsModal(true);
+          }}
+          style={[styles.iconButton, { backgroundColor: '#444' }]}
+        >
+          <Icon name="barbell" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            dismissKeyboard();
+            setShowSettings(true);
+          }}
+          style={[styles.iconButton, { backgroundColor: '#444' }]}
+        >
+          <Icon name="gear" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Weight input label above field */}
         <View style={[styles.topRow]}>
           <View style={[styles.topFieldColumn]}>
             <Text style={styles.label}>1RM Weight:</Text>
@@ -322,8 +418,11 @@ function AppContent() {
             keyboardType="numeric"
             value={weight}
             onChangeText={handleWeightInput}
-            onFocus={() => setShowLiftDropdown(true)}
-            placeholder="Enter weight in kg"
+            onFocus={() => {
+              setShowLiftDropdown(true);
+              setWeight('');
+            }}
+            placeholder="kg"
             placeholderTextColor="#888"
             maxLength={6}
           />
@@ -332,7 +431,7 @@ function AppContent() {
               style={styles.dropdown}
               onPress={(e) => e.stopPropagation()}
             >
-              <ScrollView style={{ maxHeight: 180 }}>
+              <ScrollView style={{ maxHeight: 180 }} keyboardShouldPersistTaps="handled">
                 {lifts.map((lift) => (
                   <TouchableOpacity
                     key={lift.id}
@@ -385,36 +484,6 @@ function AppContent() {
             <Text style={styles.buttonText}>+5%</Text>
           </TouchableOpacity>
         </View>
-      </View>
-      <View style={{ alignItems: 'center', marginBottom: 8 }}>
-        <Text style={{ color: '#aaa', fontSize: 14 }}>
-          {(() => {
-            if (effectivePercentage < 60) return 'Light';
-            if (effectivePercentage < 75) return 'Moderate';
-            if (effectivePercentage < 90) return 'Heavy';
-            return 'Max';
-          })()}
-        </Text>
-      </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 12 }}>
-        <TouchableOpacity
-          onPress={() => {
-            dismissKeyboard();
-            setShowSettings(true);
-          }}
-          style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#333', marginRight: 8 }}
-        >
-          <Text style={{ color: '#ddd' }}>Settings</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => {
-            dismissKeyboard();
-            setShowLiftsModal(true);
-          }}
-          style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#333' }}
-        >
-          <Text style={{ color: '#ddd' }}>Lifts</Text>
-        </TouchableOpacity>
       </View>
 
         {/* Percentage select modal */}
@@ -523,7 +592,7 @@ function AppContent() {
           }}
         >
           <Pressable onPress={(e) => e.stopPropagation()} style={[styles.modalContent, { width: 340 }]}>
-            <Text style={[styles.label, { marginBottom: 12 }]}>Lifts (1RM)</Text>
+            <Text style={[styles.label, { marginBottom: 12 }]}>Saved Lifts</Text>
             <View style={{ flexDirection: 'row', width: '100%', marginBottom: 10, alignItems: 'center' }}>
               <TextInput
                 style={[styles.input, styles.darkInput, { flex: 1, marginRight: 8 }]}
@@ -590,6 +659,49 @@ function AppContent() {
               ))}
               {lifts.length === 0 && <Text style={{ color: '#777' }}>No lifts added yet.</Text>}
             </ScrollView>
+
+            <View style={{ marginTop: 12, width: '100%' }}>
+              <Text style={[styles.value, { fontSize: 16, marginBottom: 6 }]}>Disable plates</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {plateOptions.map((plate) => {
+                  const disabled = disabledPlates.includes(plate.weight);
+                  return (
+                    <TouchableOpacity
+                      key={plate.weight}
+                      onPress={() =>
+                        setDisabledPlates((prev) =>
+                          disabled ? prev.filter((w) => w !== plate.weight) : [...prev, plate.weight]
+                        )
+                      }
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingVertical: 6,
+                        paddingHorizontal: 10,
+                        borderRadius: 8,
+                        backgroundColor: disabled ? '#3a2a2a' : '#2f2f2f',
+                        borderWidth: 1,
+                        borderColor: disabled ? '#8b2a2a' : '#444',
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 14,
+                          height: 14,
+                          borderRadius: 2,
+                          backgroundColor: plate.color,
+                          marginRight: 8,
+                          borderWidth: 1,
+                          borderColor: '#222',
+                          opacity: disabled ? 0.4 : 1,
+                        }}
+                      />
+                      <Text style={{ color: disabled ? '#aaa' : '#fff', fontSize: 15 }}>{plate.weight}kg</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -601,6 +713,7 @@ function AppContent() {
         <BarbellVisual
           plates={platesPerSide}
           width={Math.max(320, screenWidth - 48)}
+          canvasWidth={screenWidth}
           flipped={barSide === 'left'}
         />
       </View>
@@ -631,50 +744,49 @@ function AppContent() {
           <Text style={{ fontSize: 15, color: '#ccc' }}>
             Plates per side ({fmt2(actualPerSide)} kg):
           </Text>
-          <Text style={{ color: '#888', marginLeft: 6 }}>{showPlateList ? '▲' : '▼'}</Text>
+          <View style={{ marginLeft: 6 }}>
+            <Icon name={showPlateList ? 'caretUp' : 'caretDown'} size={18} color="#ccc" />
+          </View>
         </TouchableOpacity>
 
-        {showPlateList &&
-          (() => {
-            const maxPlateLines = 7; // maximum number of different plates possible
-            const lines = [];
-            for (let i = 0; i < maxPlateLines; i++) {
-              if (platesPerSide[i]) {
-                const plateColor = platesPerSide[i].color;
-                const shadowColor = plateColor === '#000000' ? '#fff' : '#222';
-                lines.push(
-                  <Text
-                    key={platesPerSide[i].weight}
+        {showPlateList && (() => {
+          const tallWeights = new Set([25, 20, 15, 10]);
+          const tallList = platesPerSide.filter((p) => tallWeights.has(p.weight));
+          const shortList = platesPerSide.filter((p) => !tallWeights.has(p.weight));
+          const renderList = (list: typeof platesPerSide, emptyText: string) =>
+            list.length === 0 ? (
+              <Text style={{ color: '#888', fontSize: 16 }}>{emptyText}</Text>
+            ) : (
+              list.map((p) => (
+                <View
+                  key={`${p.weight}-${p.count}`}
+                  style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}
+                >
+                  <View
                     style={{
-                      color: plateColor,
-                      fontSize: 20,
-                      textShadowColor: shadowColor,
-                      textShadowOffset: { width: 1, height: 1 },
-                      textShadowRadius: 2,
+                      width: 14,
+                      height: 14,
+                      borderRadius: 2,
+                      backgroundColor: p.color,
+                      marginRight: 8,
+                      borderWidth: 1,
+                      borderColor: '#222',
                     }}
-                  >
-                    {platesPerSide[i].count}x {platesPerSide[i].weight}kg
+                  />
+                  <Text style={{ color: '#fff', fontSize: 17, fontWeight: '700' }}>
+                    {p.count}x {p.weight}kg
                   </Text>
-                );
-              } else {
-                // Render invisible placeholder to reserve space
-                lines.push(
-                  <Text key={'placeholder-' + i} style={{ fontSize: 20, opacity: 0 }}>
-                    placeholder
-                  </Text>
-                );
-              }
-            }
-            if (platesPerSide.length === 0) {
-              // Show 'No plates needed' in the first line
-              lines[0] = (
-                <Text key="no-plates" style={{ color: '#888', fontSize: 20 }}>
-                  No plates needed
-                </Text>
-              );
-            }
-            return lines;
-          })()}
+                </View>
+              ))
+            );
+
+          return (
+            <View style={{ flexDirection: 'row', gap: 16 }}>
+              <View style={{ flex: 1 }}>{renderList(tallList, 'No tall plates')}</View>
+              <View style={{ flex: 1 }}>{renderList(shortList, 'No small plates')}</View>
+            </View>
+          );
+        })()}
       </View>
       </View>
     </TouchableWithoutFeedback>
@@ -685,10 +797,12 @@ function AppContent() {
 function BarbellVisual({
   plates,
   width = 320,
+  canvasWidth,
   flipped = false,
 }: {
   plates: { weight: number; color: string; count: number }[];
   width?: number;
+  canvasWidth?: number;
   flipped?: boolean;
 }) {
   // SVG dimensions
@@ -702,11 +816,13 @@ function BarbellVisual({
     5: basePlateHeight * 0.6,
     2.5: basePlateHeight * 0.5,
     1.25: basePlateHeight * 0.4,
+    1: basePlateHeight * 0.3,
+    0.5: basePlateHeight * 0.3,
+    0.25: basePlateHeight * 0.3,
   };
-  const height = basePlateHeight + 40; // add padding for curved end and centering
+  const height = basePlateHeight + 40; // add padding for centering
   const stopWidth = 10;
   const endWidth = 20;
-  const stopColor = '#888';
   const barColor = '#888';
   // Plate thicknesses (visual, not real)
   const plateThicknessMap: Record<number, number> = {
@@ -717,6 +833,9 @@ function BarbellVisual({
     5: 21,
     2.5: 18,
     1.25: 15,
+    1: 15,
+    0.5: 15,
+    0.25: 15,
   };
   
   // Calculate total width needed for all plates
@@ -729,55 +848,71 @@ function BarbellVisual({
       totalPlateWidth += thickness;
     }
   });
-  // Start position: flush to the stop on the chosen side
+
+  // Start position: flush to the stop on the chosen side (do not move plates)
   let x = flipped ? endWidth + stopWidth : width - endWidth - stopWidth - totalPlateWidth;
+  const barExtend = 60; // only extend on weighted side
+  const svgW = canvasWidth && canvasWidth > width ? canvasWidth : width + barExtend;
+  const offsetX = (svgW - width) / 2;
+
   return (
-    <Svg width={width} height={height}>
-      {/* Bar (horizontal) */}
-      <Rect
-        x={0}
-        y={height / 2 - barThickness / 2}
-        width={width}
-        height={barThickness}
-        fill={barColor}
-        rx={barThickness / 4} // slightly rounded, flatter left end
-      />
-      {/* Bar end (right or left depending on flip) */}
-      <Rect
-        x={flipped ? 0 : width - endWidth}
-        y={height / 2 - barThickness}
-        width={endWidth}
-        height={barThickness * 2}
-        fill={'#666'}
-        rx={6}
-      />
-      {/* Plates (largest to smallest, flush to stop) */}
-      <G>
-        {(() => {
-          const renderPlates = flipped ? plates : [...plates].reverse();
-          const rects: JSX.Element[] = [];
-          renderPlates.forEach((p) => {
-            const thickness = plateThicknessMap[p.weight] || 8;
-            const plateHeight = plateHeightMap[p.weight] || basePlateHeight;
-            for (let j = 0; j < p.count; j++) {
-              rects.push(
-                <Rect
-                  key={`${flipped ? 'L' : 'R'}-${p.weight}-${j}-${thickness}-${plateHeight}`}
-                  x={x}
-                  y={height / 2 - plateHeight / 2}
-                  width={thickness}
-                  height={plateHeight}
-                  fill={p.weight === 15 ? '#FFD600' : p.color}
-                  stroke={p.weight === 1.25 ? '#fff' : '#222'}
-                  strokeWidth={1}
-                  rx={thickness / 3}
-                />
-              );
-              x += thickness;
-            }
-          });
-          return rects;
-        })()}
+    <Svg width={svgW} height={height}>
+      <G transform={`translate(${offsetX},0)`}>
+        {/* Bar (horizontal) */}
+        <Rect
+          x={0}
+          y={height / 2 - barThickness / 2}
+          width={width}
+          height={barThickness}
+          fill={barColor}
+          rx={barThickness / 4} // slight rounding
+        />
+        {/* Bar extension only on weighted side */}
+        <Rect
+          x={flipped ? -barExtend : width}
+          y={height / 2 - barThickness / 2}
+          width={barExtend}
+          height={barThickness}
+          fill={barColor}
+        />
+        {/* Bar end (right or left depending on flip) */}
+        <Rect
+          x={flipped ? 0 : width - endWidth}
+          y={height / 2 - barThickness}
+          width={endWidth * 1.5}
+          height={barThickness * 2}
+          fill={'#666'}
+          rx={6}
+        />
+        {/* Plates (largest to smallest, flush to stop) */}
+        <G>
+          {(() => {
+            const renderPlates = flipped ? plates : [...plates].reverse();
+            const rects: JSX.Element[] = [];
+            let plateX = x;
+            renderPlates.forEach((p) => {
+              const thickness = plateThicknessMap[p.weight] || 8;
+              const plateHeight = plateHeightMap[p.weight] || basePlateHeight;
+              for (let j = 0; j < p.count; j++) {
+                rects.push(
+                  <Rect
+                    key={`${flipped ? 'L' : 'R'}-${p.weight}-${j}-${thickness}-${plateHeight}`}
+                    x={plateX}
+                    y={height / 2 - plateHeight / 2}
+                    width={thickness}
+                    height={plateHeight}
+                    fill={p.weight === 15 ? '#FFD600' : p.color}
+                    stroke={p.weight <= 1.25 ? '#fff' : '#222'}
+                    strokeWidth={1}
+                    rx={thickness / 3}
+                  />
+                );
+                plateX += thickness;
+              }
+            });
+            return rects;
+          })()}
+        </G>
       </G>
     </Svg>
   );
