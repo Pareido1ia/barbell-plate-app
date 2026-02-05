@@ -41,6 +41,11 @@ function AppContent() {
   const [weight, setWeight] = useState('100');
   const dismissKeyboard = () => Keyboard.dismiss();
   const round2 = (n: number) => Math.round(n * 100) / 100;
+  const fmt2 = (n: number) => {
+    const rounded = Math.round(n * 100) / 100;
+    const str = rounded.toFixed(2);
+    return str.replace(/\.?0+$/, '');
+  };
   // Helper to handle capped input
   const handleWeightInput = (text: string) => {
     let num = parseInt(text.replace(/[^0-9]/g, '')) || 0;
@@ -50,6 +55,9 @@ function AppContent() {
   const [percentage, setPercentage] = useState(50); // default to 50%
   const [showPercentageModal, setShowPercentageModal] = useState(false);
   const [barbellWeight, setBarbellWeight] = useState(20);
+  const [showPlateList, setShowPlateList] = useState(true);
+  const [barSide, setBarSide] = useState<'left' | 'right'>('left'); // default off => left side
+  const [showSettings, setShowSettings] = useState(false);
 
   // Load last used barbell type on mount
   useEffect(() => {
@@ -57,6 +65,8 @@ function AppContent() {
       try {
         const stored = await AsyncStorage.getItem('barbellWeight');
         if (stored) setBarbellWeight(Number(stored));
+        const storedSide = await AsyncStorage.getItem('barSide');
+        if (storedSide === 'left' || storedSide === 'right') setBarSide(storedSide);
       } catch {}
     })();
   }, []);
@@ -65,6 +75,9 @@ function AppContent() {
   useEffect(() => {
     AsyncStorage.setItem('barbellWeight', String(barbellWeight));
   }, [barbellWeight]);
+  useEffect(() => {
+    AsyncStorage.setItem('barSide', barSide);
+  }, [barSide]);
 
   const handlePercentageChange = (delta: number) => {
     dismissKeyboard();
@@ -170,6 +183,9 @@ function AppContent() {
         }
 
   const platesPerSide = weightPerSide > 0 ? calculatePlates(weightPerSide) : [];
+  const actualPerSide = platesPerSide.reduce((sum, p) => sum + p.weight * p.count, 0);
+  const actualTotal = barbellWeight + actualPerSide * 2;
+  const mismatch = round2(actualTotal - targetWeight);
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -197,11 +213,11 @@ function AppContent() {
           </View>
         </View>
         <View style={styles.percentageRow}>
-          <View style={styles.percentageSideBtns}>
-            <TouchableOpacity style={styles.button} onPress={() => handlePercentageChange(-5)}>
-              <Text style={styles.buttonText}>-5%</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={() => handlePercentageChange(-2.5)}>
+        <View style={styles.percentageSideBtns}>
+          <TouchableOpacity style={styles.button} onPress={() => handlePercentageChange(-5)}>
+            <Text style={styles.buttonText}>-5%</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={() => handlePercentageChange(-2.5)}>
               <Text style={styles.buttonText}>-2.5%</Text>
             </TouchableOpacity>
           </View>
@@ -217,28 +233,49 @@ function AppContent() {
           </Text>
             <Text style={{ color: '#aaa', fontSize: 12 }}>Tap to select</Text>
           </TouchableOpacity>
-          <View style={styles.percentageSideBtns}>
-            <TouchableOpacity style={styles.button} onPress={() => handlePercentageChange(2.5)}>
-              <Text style={styles.buttonText}>+2.5%</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={() => handlePercentageChange(5)}>
-              <Text style={styles.buttonText}>+5%</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.percentageSideBtns}>
+          <TouchableOpacity style={styles.button} onPress={() => handlePercentageChange(2.5)}>
+            <Text style={styles.buttonText}>+2.5%</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={() => handlePercentageChange(5)}>
+            <Text style={styles.buttonText}>+5%</Text>
+          </TouchableOpacity>
         </View>
+      </View>
+      <View style={{ alignItems: 'center', marginBottom: 8 }}>
+        <Text style={{ color: '#aaa', fontSize: 14 }}>
+          {(() => {
+            if (effectivePercentage < 60) return 'Light';
+            if (effectivePercentage < 75) return 'Moderate';
+            if (effectivePercentage < 90) return 'Heavy';
+            return 'Max';
+          })()}
+        </Text>
+      </View>
+      <View style={{ alignItems: 'center', marginBottom: 12 }}>
+        <TouchableOpacity
+          onPress={() => {
+            dismissKeyboard();
+            setShowSettings(true);
+          }}
+          style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#333' }}
+        >
+          <Text style={{ color: '#ddd' }}>Settings</Text>
+        </TouchableOpacity>
+      </View>
 
         {/* Percentage select modal */}
-        <Modal visible={showPercentageModal} transparent animationType="fade">
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => {
-              dismissKeyboard();
-              setShowPercentageModal(false);
-            }}
-          >
-            <View style={styles.modalContent}>
-              <Text style={[styles.label, { marginBottom: 12 }]}>Select Percentage</Text>
-              <FlatList
+      <Modal visible={showPercentageModal} transparent animationType="fade">
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => {
+            dismissKeyboard();
+            setShowPercentageModal(false);
+          }}
+        >
+          <View style={styles.modalContent}>
+            <Text style={[styles.label, { marginBottom: 12 }]}>Select Percentage</Text>
+            <FlatList
                 data={[40, 50, 60, 70, 80, 90, 100]}
                 keyExtractor={(item) => item.toString()}
                 renderItem={({ item }) => (
@@ -253,22 +290,76 @@ function AppContent() {
                     <Text style={styles.value}>{item}%</Text>
                   </TouchableOpacity>
                 )}
+            />
+          </View>
+        </Pressable>
+      </Modal>
+      {/* Settings modal */}
+      <Modal visible={showSettings} transparent animationType="fade">
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => {
+            dismissKeyboard();
+            setShowSettings(false);
+          }}
+        >
+          <View style={[styles.modalContent, { width: 260 }]}>
+            <Text style={[styles.label, { marginBottom: 12 }]}>Settings</Text>
+            <View
+              style={[
+                styles.modalItem,
+                { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: 220 },
+              ]}
+            >
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={[styles.value, { fontSize: 16 }]}>Show {barSide === 'left' ? 'right' : 'left'} plates</Text>
+              </View>
+              <Switch
+                value={barSide === 'right'}
+                onValueChange={(v) => setBarSide(v ? 'right' : 'left')}
+                trackColor={{ false: '#555', true: '#6ddf7a' }}
+                thumbColor="#fff"
               />
             </View>
-          </Pressable>
-        </Modal>
+          </View>
+        </Pressable>
+      </Modal>
 
         {/* Barbell weight toggle moved inline above */}
 
         {/* Barbell visual */}
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%' }}>
-          <BarbellVisual plates={platesPerSide} width={Math.max(320, screenWidth - 48)} />
-        </View>
+        <BarbellVisual
+          plates={platesPerSide}
+          width={Math.max(320, screenWidth - 48)}
+          flipped={barSide === 'left'}
+        />
+      </View>
 
-        <View style={{ marginVertical: 16, minHeight: 180, justifyContent: 'flex-start' }}>
-          <Text style={{ fontWeight: 'bold', fontSize: 20, color: '#fff' }}>Target: {targetWeight} kg</Text>
-          <Text style={{ fontSize: 15, marginBottom: 8, color: '#ccc' }}>Plates per side:</Text>
-          {(() => {
+      <View style={{ marginVertical: 16, minHeight: 180, justifyContent: 'flex-start' }}>
+        <Text style={{ fontWeight: 'bold', fontSize: 20, color: '#fff' }}>Target: {fmt2(targetWeight)} kg</Text>
+        <Text
+          style={{
+            fontSize: 15,
+            marginBottom: 4,
+            color: mismatch === 0 ? '#6ddf7a' : '#f4d35e',
+          }}
+        >
+          {mismatch === 0 ? 'Exact match' : `${mismatch > 0 ? '+' : ''}${fmt2(mismatch)} kg mismatch`}
+        </Text>
+
+        <TouchableOpacity
+          onPress={() => setShowPlateList((v) => !v)}
+          style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}
+        >
+          <Text style={{ fontSize: 15, color: '#ccc' }}>
+            Plates per side ({fmt2(actualPerSide)} kg):
+          </Text>
+          <Text style={{ color: '#888', marginLeft: 6 }}>{showPlateList ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+
+        {showPlateList &&
+          (() => {
             const maxPlateLines = 7; // maximum number of different plates possible
             const lines = [];
             for (let i = 0; i < maxPlateLines; i++) {
@@ -292,7 +383,7 @@ function AppContent() {
               } else {
                 // Render invisible placeholder to reserve space
                 lines.push(
-                  <Text key={"placeholder-" + i} style={{ fontSize: 20, opacity: 0 }}>
+                  <Text key={'placeholder-' + i} style={{ fontSize: 20, opacity: 0 }}>
                     placeholder
                   </Text>
                 );
@@ -300,18 +391,30 @@ function AppContent() {
             }
             if (platesPerSide.length === 0) {
               // Show 'No plates needed' in the first line
-              lines[0] = <Text key="no-plates" style={{ color: '#888', fontSize: 20 }}>No plates needed</Text>;
+              lines[0] = (
+                <Text key="no-plates" style={{ color: '#888', fontSize: 20 }}>
+                  No plates needed
+                </Text>
+              );
             }
             return lines;
           })()}
-        </View>
+      </View>
       </View>
     </TouchableWithoutFeedback>
   );
 }
 
 // Visual component for the barbell and plates (one side)
-function BarbellVisual({ plates, width = 320 }: { plates: { weight: number; color: string; count: number }[]; width?: number }) {
+function BarbellVisual({
+  plates,
+  width = 320,
+  flipped = false,
+}: {
+  plates: { weight: number; color: string; count: number }[];
+  width?: number;
+  flipped?: boolean;
+}) {
   // SVG dimensions
   const barThickness = 30;
   const basePlateHeight = barThickness * 9;
@@ -326,6 +429,7 @@ function BarbellVisual({ plates, width = 320 }: { plates: { weight: number; colo
   };
   const height = basePlateHeight + 40; // add padding for curved end and centering
   const stopWidth = 10;
+  const endWidth = 20;
   const stopColor = '#888';
   const barColor = '#888';
   // Plate thicknesses (visual, not real)
@@ -349,8 +453,8 @@ function BarbellVisual({ plates, width = 320 }: { plates: { weight: number; colo
       totalPlateWidth += thickness;
     }
   });
-  // Start so the right edge of the last plate is flush with the stop
-  let x = width - 20 - stopWidth - totalPlateWidth;
+  // Start position: flush to the stop on the chosen side
+  let x = flipped ? endWidth + stopWidth : width - endWidth - stopWidth - totalPlateWidth;
   return (
     <Svg width={width} height={height}>
       {/* Bar (horizontal) */}
@@ -362,39 +466,42 @@ function BarbellVisual({ plates, width = 320 }: { plates: { weight: number; colo
         fill={barColor}
         rx={barThickness / 4} // slightly rounded, flatter left end
       />
-      {/* Bar end (right) */}
+      {/* Bar end (right or left depending on flip) */}
       <Rect
-        x={width - 20}
+        x={flipped ? 0 : width - endWidth}
         y={height / 2 - barThickness}
-        width={20}
+        width={endWidth}
         height={barThickness * 2}
         fill={'#666'}
         rx={6}
       />
-      {/* Plates (largest to smallest, flush left) */}
+      {/* Plates (largest to smallest, flush to stop) */}
       <G>
-        {[...plates].reverse().map((p, i) => {
-          const thickness = plateThicknessMap[p.weight] || 8;
-          const plateHeight = plateHeightMap[p.weight] || basePlateHeight;
-          const rects = [];
-          for (let j = 0; j < p.count; j++) {
-            rects.push(
-              <Rect
-                key={`${p.weight}-${j}`}
-                x={x}
-                y={height / 2 - plateHeight / 2}
-                width={thickness}
-                height={plateHeight}
-                fill={p.weight === 15 ? '#FFD600' : p.color}
-                stroke={p.weight === 1.25 ? '#fff' : '#222'}
-                strokeWidth={1}
-                rx={thickness / 3}
-              />
-            );
-            x += thickness;
-          }
+        {(() => {
+          const renderPlates = flipped ? plates : [...plates].reverse();
+          const rects: JSX.Element[] = [];
+          renderPlates.forEach((p) => {
+            const thickness = plateThicknessMap[p.weight] || 8;
+            const plateHeight = plateHeightMap[p.weight] || basePlateHeight;
+            for (let j = 0; j < p.count; j++) {
+              rects.push(
+                <Rect
+                  key={`${flipped ? 'L' : 'R'}-${p.weight}-${j}-${thickness}-${plateHeight}`}
+                  x={x}
+                  y={height / 2 - plateHeight / 2}
+                  width={thickness}
+                  height={plateHeight}
+                  fill={p.weight === 15 ? '#FFD600' : p.color}
+                  stroke={p.weight === 1.25 ? '#fff' : '#222'}
+                  strokeWidth={1}
+                  rx={thickness / 3}
+                />
+              );
+              x += thickness;
+            }
+          });
           return rects;
-        })}
+        })()}
       </G>
     </Svg>
   );
