@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Modal, Pressable, FlatList } from 'react-native';
-import Svg, { Rect, G } from 'react-native-svg';
+import Svg, { Rect, G, Path, Line } from 'react-native-svg';
 import {
   StatusBar,
   StyleSheet,
@@ -21,6 +21,7 @@ import {
   useWindowDimensions,
   Keyboard,
   TouchableWithoutFeedback,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -39,12 +40,97 @@ function AppContent() {
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [weight, setWeight] = useState('100');
-  const dismissKeyboard = () => Keyboard.dismiss();
+  const dismissKeyboard = () => {
+    setShowLiftDropdown(false);
+    Keyboard.dismiss();
+  };
   const round2 = (n: number) => Math.round(n * 100) / 100;
   const fmt2 = (n: number) => {
     const rounded = Math.round(n * 100) / 100;
     const str = rounded.toFixed(2);
     return str.replace(/\.?0+$/, '');
+  };
+  const Icon = ({ name, size = 18, color = '#fff' }: { name: 'plus' | 'edit' | 'check' | 'close'; size?: number; color?: string }) => {
+    const strokeWidth = 3;
+    switch (name) {
+      case 'plus':
+        return (
+          <Svg width={size} height={size} viewBox="0 0 24 24">
+            <Line x1="12" y1="5" x2="12" y2="19" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+            <Line x1="5" y1="12" x2="19" y2="12" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+          </Svg>
+        );
+      case 'edit':
+        return (
+          <Svg width={size} height={size} viewBox="0 0 24 24">
+            <Path
+              d="M4 20h4l10.5-10.5a1.5 1.5 0 0 0 0-2.12l-1.88-1.88a1.5 1.5 0 0 0-2.12 0L4 16v4z"
+              stroke={color}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </Svg>
+        );
+      case 'check':
+        return (
+          <Svg width={size} height={size} viewBox="0 0 24 24">
+            <Path
+              d="M5 13l4 4L19 7"
+              stroke={color}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </Svg>
+        );
+      case 'close':
+      default:
+        return (
+          <Svg width={size} height={size} viewBox="0 0 24 24">
+            <Line x1="6" y1="6" x2="18" y2="18" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+            <Line x1="18" y1="6" x2="6" y2="18" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+          </Svg>
+        );
+    }
+  };
+  const addLift = () => {
+    const cleanName = newLiftName.trim();
+    const weightNum = parseInt(newLiftWeight, 10);
+    if (!cleanName || isNaN(weightNum) || weightNum <= 0) return;
+    setLifts((prev) => [...prev, { id: `${Date.now()}`, name: cleanName, weight: weightNum }]);
+    setNewLiftName('');
+    setNewLiftWeight('');
+  };
+
+  const deleteLift = (id: string) => {
+    setLifts((prev) => prev.filter((l) => l.id !== id));
+    if (editingId === id) {
+      setEditingId(null);
+      setEditingWeight('');
+    }
+  };
+
+  const startEditLift = (id: string, weight: number) => {
+    setEditingId(id);
+    setEditingWeight(String(weight));
+  };
+
+  const saveEditLift = () => {
+    if (!editingId) return;
+    const val = parseInt(editingWeight, 10);
+    if (isNaN(val) || val <= 0) return;
+    setLifts((prev) => prev.map((l) => (l.id === editingId ? { ...l, weight: val } : l)));
+    setEditingId(null);
+    setEditingWeight('');
+  };
+
+  const handleSelectLiftWeight = (weightVal: number) => {
+    setWeight(String(weightVal));
+    setShowLiftDropdown(false);
+    dismissKeyboard();
   };
   // Helper to handle capped input
   const handleWeightInput = (text: string) => {
@@ -58,6 +144,16 @@ function AppContent() {
   const [showPlateList, setShowPlateList] = useState(true);
   const [barSide, setBarSide] = useState<'left' | 'right'>('left'); // default off => left side
   const [showSettings, setShowSettings] = useState(false);
+  const [showLiftsModal, setShowLiftsModal] = useState(false);
+  const [bodyweight, setBodyweight] = useState('');
+  const [showBwMultiple, setShowBwMultiple] = useState(false);
+  const [warmupPct, setWarmupPct] = useState(40);
+  const [lifts, setLifts] = useState<{ id: string; name: string; weight: number }[]>([]);
+  const [newLiftName, setNewLiftName] = useState('');
+  const [newLiftWeight, setNewLiftWeight] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingWeight, setEditingWeight] = useState('');
+  const [showLiftDropdown, setShowLiftDropdown] = useState(false);
 
   // Load last used barbell type on mount
   useEffect(() => {
@@ -67,6 +163,19 @@ function AppContent() {
         if (stored) setBarbellWeight(Number(stored));
         const storedSide = await AsyncStorage.getItem('barSide');
         if (storedSide === 'left' || storedSide === 'right') setBarSide(storedSide);
+        const storedBw = await AsyncStorage.getItem('bodyweight');
+        if (storedBw) setBodyweight(storedBw);
+        const storedBwToggle = await AsyncStorage.getItem('showBwMultiple');
+        if (storedBwToggle === 'true') setShowBwMultiple(true);
+        const storedWarmup = await AsyncStorage.getItem('warmupPct');
+        if (storedWarmup && !isNaN(Number(storedWarmup))) setWarmupPct(Number(storedWarmup));
+        const storedLifts = await AsyncStorage.getItem('lifts');
+        if (storedLifts) {
+          try {
+            const parsed = JSON.parse(storedLifts);
+            if (Array.isArray(parsed)) setLifts(parsed);
+          } catch {}
+        }
       } catch {}
     })();
   }, []);
@@ -78,6 +187,18 @@ function AppContent() {
   useEffect(() => {
     AsyncStorage.setItem('barSide', barSide);
   }, [barSide]);
+  useEffect(() => {
+    AsyncStorage.setItem('bodyweight', bodyweight);
+  }, [bodyweight]);
+  useEffect(() => {
+    AsyncStorage.setItem('showBwMultiple', showBwMultiple ? 'true' : 'false');
+  }, [showBwMultiple]);
+  useEffect(() => {
+    AsyncStorage.setItem('warmupPct', String(warmupPct));
+  }, [warmupPct]);
+  useEffect(() => {
+    AsyncStorage.setItem('lifts', JSON.stringify(lifts));
+  }, [lifts]);
 
   const handlePercentageChange = (delta: number) => {
     dismissKeyboard();
@@ -186,6 +307,8 @@ function AppContent() {
   const actualPerSide = platesPerSide.reduce((sum, p) => sum + p.weight * p.count, 0);
   const actualTotal = barbellWeight + actualPerSide * 2;
   const mismatch = round2(actualTotal - targetWeight);
+  const bwNumber = parseInt(bodyweight, 10) || 0;
+  const bwMultiple = bwNumber > 0 ? round2(targetWeight / bwNumber) : 0;
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -194,20 +317,41 @@ function AppContent() {
         <View style={[styles.topRow]}>
           <View style={[styles.topFieldColumn]}>
             <Text style={styles.label}>1RM Weight:</Text>
-            <TextInput
-              style={[styles.input, styles.darkInput, { width: 80 }]}
-              keyboardType="numeric"
-              value={weight}
-              onChangeText={handleWeightInput}
-              placeholder="Enter weight in kg"
-              placeholderTextColor="#888"
-              maxLength={6}
-            />
-          </View>
-          <View style={[styles.topFieldColumnRight]}>
-            <Text style={styles.labelRight}>Barbell weight:</Text>
-            <TouchableOpacity style={styles.barbellToggle} onPress={handleBarbellToggle}>
-              <Text style={{ color: '#fff', fontSize: 15, marginRight: 6 }}>{barbellWeight} kg</Text>
+          <TextInput
+            style={[styles.input, styles.darkInput, { width: 80 }]}
+            keyboardType="numeric"
+            value={weight}
+            onChangeText={handleWeightInput}
+            onFocus={() => setShowLiftDropdown(true)}
+            placeholder="Enter weight in kg"
+            placeholderTextColor="#888"
+            maxLength={6}
+          />
+          {showLiftDropdown && lifts.length > 0 && (
+            <Pressable
+              style={styles.dropdown}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <ScrollView style={{ maxHeight: 180 }}>
+                {lifts.map((lift) => (
+                  <TouchableOpacity
+                    key={lift.id}
+                    style={styles.dropdownItem}
+                    onPress={() => handleSelectLiftWeight(lift.weight)}
+                  >
+                    <Text style={{ color: '#fff' }}>
+                      {lift.name}: {lift.weight} kg
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </Pressable>
+          )}
+        </View>
+        <View style={[styles.topFieldColumnRight]}>
+          <Text style={styles.labelRight}>Barbell weight:</Text>
+          <TouchableOpacity style={styles.barbellToggle} onPress={handleBarbellToggle}>
+            <Text style={{ color: '#fff', fontSize: 15, marginRight: 6 }}>{barbellWeight} kg</Text>
               <Text style={{ color: '#facf79', fontSize: 13, marginLeft: 8 }}>(Tap to change)</Text>
             </TouchableOpacity>
           </View>
@@ -252,15 +396,24 @@ function AppContent() {
           })()}
         </Text>
       </View>
-      <View style={{ alignItems: 'center', marginBottom: 12 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 12 }}>
         <TouchableOpacity
           onPress={() => {
             dismissKeyboard();
             setShowSettings(true);
           }}
-          style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#333' }}
+          style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#333', marginRight: 8 }}
         >
           <Text style={{ color: '#ddd' }}>Settings</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            dismissKeyboard();
+            setShowLiftsModal(true);
+          }}
+          style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#333' }}
+        >
+          <Text style={{ color: '#ddd' }}>Lifts</Text>
         </TouchableOpacity>
       </View>
 
@@ -303,8 +456,43 @@ function AppContent() {
             setShowSettings(false);
           }}
         >
-          <View style={[styles.modalContent, { width: 260 }]}>
+          <Pressable onPress={(e) => e.stopPropagation()} style={[styles.modalContent, { width: 280 }]}>
             <Text style={[styles.label, { marginBottom: 12 }]}>Settings</Text>
+            <View style={[styles.modalItem, { width: 220, alignItems: 'flex-start' }]}>
+              <Text style={[styles.value, { fontSize: 16, marginBottom: 6 }]}>Bodyweight (kg)</Text>
+              <TextInput
+                style={[styles.input, styles.darkInput, { width: '100%', marginBottom: 0 }]}
+                value={bodyweight}
+                onChangeText={(t) => {
+                  const numeric = t.replace(/[^0-9]/g, '');
+                  const val = parseInt(numeric, 10);
+                  if (isNaN(val)) {
+                    setBodyweight('');
+                  } else {
+                    setBodyweight(String(Math.min(val, 300)));
+                  }
+                }}
+                keyboardType="numeric"
+                placeholder="Enter bodyweight"
+                placeholderTextColor="#777"
+              />
+            </View>
+            <View
+              style={[
+                styles.modalItem,
+                { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: 220 },
+              ]}
+            >
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={[styles.value, { fontSize: 15 }]}>Show BW multiplier</Text>
+              </View>
+              <Switch
+                value={showBwMultiple}
+                onValueChange={setShowBwMultiple}
+                trackColor={{ false: '#555', true: '#6ddf7a' }}
+                thumbColor="#fff"
+              />
+            </View>
             <View
               style={[
                 styles.modalItem,
@@ -321,7 +509,88 @@ function AppContent() {
                 thumbColor="#fff"
               />
             </View>
-          </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Lifts modal */}
+      <Modal visible={showLiftsModal} transparent animationType="fade">
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => {
+            setShowLiftsModal(false);
+            dismissKeyboard();
+          }}
+        >
+          <Pressable onPress={(e) => e.stopPropagation()} style={[styles.modalContent, { width: 340 }]}>
+            <Text style={[styles.label, { marginBottom: 12 }]}>Lifts (1RM)</Text>
+            <View style={{ flexDirection: 'row', width: '100%', marginBottom: 10, alignItems: 'center' }}>
+              <TextInput
+                style={[styles.input, styles.darkInput, { flex: 1, marginRight: 8 }]}
+                value={newLiftName}
+                onChangeText={setNewLiftName}
+                placeholder="Lift name"
+                placeholderTextColor="#777"
+              />
+              <TextInput
+                style={[styles.input, styles.darkInput, { width: 90 }]}
+                value={newLiftWeight}
+                onChangeText={(t) => setNewLiftWeight(t.replace(/[^0-9]/g, ''))}
+                keyboardType="numeric"
+                placeholder="1RM"
+                placeholderTextColor="#777"
+              />
+              <TouchableOpacity style={[styles.iconButton, { marginLeft: 6 }]} onPress={addLift}>
+                <Icon name="plus" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 260, width: '100%', marginTop: 8 }}>
+              {lifts.map((lift) => (
+                <View
+                  key={lift.id}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 8,
+                  }}
+                >
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>{lift.name}</Text>
+                    {editingId === lift.id ? (
+                      <TextInput
+                        style={[styles.input, styles.darkInput, { width: 110, marginTop: 4, marginBottom: 0 }]}
+                        value={editingWeight}
+                        onChangeText={(t) => setEditingWeight(t.replace(/[^0-9]/g, ''))}
+                        keyboardType="numeric"
+                      />
+                    ) : (
+                      <Text style={{ color: '#ccc', fontSize: 14 }}>{lift.weight} kg</Text>
+                    )}
+                  </View>
+                  {editingId === lift.id ? (
+                    <TouchableOpacity style={[styles.iconButton]} onPress={saveEditLift}>
+                      <Icon name="check" />
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.iconButton]}
+                      onPress={() => startEditLift(lift.id, lift.weight)}
+                    >
+                      <Icon name="edit" />
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.iconButton, { marginLeft: 4, backgroundColor: '#8b2a2a' }]}
+                    onPress={() => deleteLift(lift.id)}
+                  >
+                    <Icon name="close" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {lifts.length === 0 && <Text style={{ color: '#777' }}>No lifts added yet.</Text>}
+            </ScrollView>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -337,7 +606,14 @@ function AppContent() {
       </View>
 
       <View style={{ marginVertical: 16, minHeight: 180, justifyContent: 'flex-start' }}>
-        <Text style={{ fontWeight: 'bold', fontSize: 20, color: '#fff' }}>Target: {fmt2(targetWeight)} kg</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+          <Text style={{ fontWeight: 'bold', fontSize: 20, color: '#fff' }}>Target: {fmt2(targetWeight)} kg</Text>
+          {showBwMultiple && bwNumber > 0 && (
+              <Text style={{ color: '#9ad0ff', fontSize: 16, marginLeft: 10 }}>
+                ({fmt2(bwMultiple)}x BW)
+              </Text>
+          )}
+        </View>
         <Text
           style={{
             fontSize: 15,
@@ -539,6 +815,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
+    marginTop: 16,
   },
   percentageSideBtns: {
     flexDirection: 'row',
@@ -594,7 +871,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     padding: 8,
     fontSize: 18,
-    marginBottom: 16,
+    marginBottom: 0,
     width: 120,
   },
   row: {
@@ -632,6 +909,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#444',
     marginLeft: 8,
+  },
+  dropdown: {
+    position: 'absolute',
+    top: 82,
+    left: 0,
+    right: 0,
+    backgroundColor: '#333',
+    borderColor: '#555',
+    borderWidth: 1,
+    borderRadius: 8,
+    zIndex: 10,
+  },
+  dropdownItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderBottomColor: '#444',
+    borderBottomWidth: 1,
+  },
+  iconButton: {
+    backgroundColor: '#595959',
+    height: 40,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    minWidth: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 
