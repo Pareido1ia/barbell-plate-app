@@ -214,6 +214,7 @@ function AppContent() {
   const [editingWeight, setEditingWeight] = useState('');
   const [showLiftDropdown, setShowLiftDropdown] = useState(false);
   const [disabledPlates, setDisabledPlates] = useState<number[]>([]);
+  const [hydrated, setHydrated] = useState(false);
 
   // Load last used barbell type on mount
   useEffect(() => {
@@ -243,32 +244,40 @@ function AppContent() {
             if (Array.isArray(parsed)) setDisabledPlates(parsed);
           } catch {}
         }
+        setHydrated(true);
       } catch {}
     })();
   }, []);
 
   // Save barbell type when changed
   useEffect(() => {
+    if (!hydrated) return;
     AsyncStorage.setItem('barbellWeight', String(barbellWeight));
-  }, [barbellWeight]);
+  }, [hydrated, barbellWeight]);
   useEffect(() => {
+    if (!hydrated) return;
     AsyncStorage.setItem('barSide', barSide);
-  }, [barSide]);
+  }, [hydrated, barSide]);
   useEffect(() => {
+    if (!hydrated) return;
     AsyncStorage.setItem('bodyweight', bodyweight);
-  }, [bodyweight]);
+  }, [hydrated, bodyweight]);
   useEffect(() => {
+    if (!hydrated) return;
     AsyncStorage.setItem('showBwMultiple', showBwMultiple ? 'true' : 'false');
-  }, [showBwMultiple]);
+  }, [hydrated, showBwMultiple]);
   useEffect(() => {
+    if (!hydrated) return;
     AsyncStorage.setItem('warmupPct', String(warmupPct));
-  }, [warmupPct]);
+  }, [hydrated, warmupPct]);
   useEffect(() => {
+    if (!hydrated) return;
     AsyncStorage.setItem('lifts', JSON.stringify(lifts));
-  }, [lifts]);
+  }, [hydrated, lifts]);
   useEffect(() => {
+    if (!hydrated) return;
     AsyncStorage.setItem('disabledPlates', JSON.stringify(disabledPlates));
-  }, [disabledPlates]);
+  }, [hydrated, disabledPlates]);
 
   const handlePercentageChange = (delta: number) => {
     dismissKeyboard();
