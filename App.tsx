@@ -214,6 +214,7 @@ function AppContent() {
   const [editingWeight, setEditingWeight] = useState('');
   const [showLiftDropdown, setShowLiftDropdown] = useState(false);
   const [disabledPlates, setDisabledPlates] = useState<number[]>([]);
+  const [showDisableModal, setShowDisableModal] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   // Load last used barbell type on mount
@@ -302,9 +303,10 @@ function AppContent() {
     { weight: 5, color: '#ECECEC', label: '5kg (white)' },
     { weight: 2.5, color: '#d2443a', label: '2.5kg (light red)' },
     { weight: 1.25, color: '#000000', label: '1.25kg (black)' },
-    { weight: 1, color: '#0f3d0f', label: '1kg (dark green)' },
-    { weight: 0.5, color: '#7a0f0f', label: '0.5kg (dark red)' },
-    { weight: 0.25, color: '#0b234f', label: '0.25kg (dark blue)' },
+    { weight: 1, color: '#7a0f0f', label: '1kg (dark red)' },
+    { weight: 0.75, color: '#0f3d0f', label: '0.75kg (dark green)' },
+    { weight: 0.5, color: '#0b234f', label: '0.5kg (dark blue)' },
+    { weight: 0.25, color: '#b8b8b8', label: '0.25kg (white)' },
   ];
   const enabledPlateOptions = plateOptions.filter((p) => !disabledPlates.includes(p.weight));
 
@@ -395,27 +397,30 @@ function AppContent() {
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false} disabled={showLiftDropdown}>
-      <View style={[styles.container, styles.darkBg, { paddingTop: 24 + insets.top }]}>
+      <View style={[styles.container, styles.darkBg, { paddingTop: 14 + insets.top }]}>
       {/* Header actions */}
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8, gap: 8 }}>
-        <TouchableOpacity
-          onPress={() => {
-            dismissKeyboard();
-            setShowLiftsModal(true);
-          }}
-          style={[styles.iconButton, { backgroundColor: '#444' }]}
-        >
-          <Icon name="barbell" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => {
-            dismissKeyboard();
-            setShowSettings(true);
-          }}
-          style={[styles.iconButton, { backgroundColor: '#444' }]}
-        >
-          <Icon name="gear" />
-        </TouchableOpacity>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8, borderLeftColor: '#444', borderLeftWidth: 4, paddingLeft: 12 }}>
+        <Text style={styles.headerTitle}>ARRR Bar</Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => {
+              dismissKeyboard();
+              setShowLiftsModal(true);
+            }}
+            style={[styles.iconButton, { backgroundColor: '#444' }]}
+          >
+            <Icon name="barbell" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              dismissKeyboard();
+              setShowSettings(true);
+            }}
+            style={[styles.iconButton, { backgroundColor: '#444' }]}
+          >
+            <Icon name="gear" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Weight input label above field */}
@@ -669,63 +674,89 @@ function AppContent() {
               {lifts.length === 0 && <Text style={{ color: '#777' }}>No lifts added yet.</Text>}
             </ScrollView>
 
-            <View style={{ marginTop: 12, width: '100%' }}>
-              <Text style={[styles.value, { fontSize: 16, marginBottom: 6 }]}>Disable plates</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {plateOptions.map((plate) => {
-                  const disabled = disabledPlates.includes(plate.weight);
-                  return (
-                    <TouchableOpacity
-                      key={plate.weight}
-                      onPress={() =>
-                        setDisabledPlates((prev) =>
-                          disabled ? prev.filter((w) => w !== plate.weight) : [...prev, plate.weight]
-                        )
-                      }
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        paddingVertical: 6,
-                        paddingHorizontal: 10,
-                        borderRadius: 8,
-                        backgroundColor: disabled ? '#3a2a2a' : '#2f2f2f',
-                        borderWidth: 1,
-                        borderColor: disabled ? '#8b2a2a' : '#444',
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: 14,
-                          height: 14,
-                          borderRadius: 2,
-                          backgroundColor: plate.color,
-                          marginRight: 8,
-                          borderWidth: 1,
-                          borderColor: '#222',
-                          opacity: disabled ? 0.4 : 1,
-                        }}
-                      />
-                      <Text style={{ color: disabled ? '#aaa' : '#fff', fontSize: 15 }}>{plate.weight}kg</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Disable plates modal triggered from bar visual */}
+      <Modal visible={showDisableModal} transparent animationType="fade">
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => {
+            setShowDisableModal(false);
+            dismissKeyboard();
+          }}
+        >
+          <Pressable onPress={(e) => e.stopPropagation()} style={[styles.modalContent, { width: 380 }]}>
+            <Text style={[styles.label, { marginBottom: 12 }]}>Enable / Disable Plates</Text>
+            <ScrollView style={{ maxHeight: 300, width: '100%' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+                {[ [25, 20, 15, 10, 5], [2.5, 1.25, 1, 0.75, 0.5, 0.25] ].map((col, idx) => (
+                  <View key={idx} style={{ flex: 1, gap: 10 }}>
+                    {col.map((w) => {
+                      const plate = plateOptions.find((p) => p.weight === w);
+                      if (!plate) return null;
+                      const disabled = disabledPlates.includes(plate.weight);
+                      return (
+                        <TouchableOpacity
+                          key={plate.weight}
+                          onPress={() =>
+                            setDisabledPlates((prev) =>
+                              disabled ? prev.filter((weight) => weight !== plate.weight) : [...prev, plate.weight]
+                            )
+                          }
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingVertical: 8,
+                            paddingHorizontal: 12,
+                            borderRadius: 10,
+                            backgroundColor: disabled ? '#3a2a2a' : '#2f2f2f',
+                            borderWidth: 1,
+                            borderColor: disabled ? '#8b2a2a' : '#444',
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 14,
+                              height: 14,
+                              borderRadius: 2,
+                              backgroundColor: plate.color,
+                              marginRight: 8,
+                              borderWidth: 1,
+                              borderColor: '#222',
+                              opacity: disabled ? 0.4 : 1,
+                            }}
+                          />
+                          <Text style={{ color: disabled ? '#aaa' : '#fff', fontSize: 15 }}>{plate.weight}kg</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ))}
               </View>
-            </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
 
         {/* Barbell weight toggle moved inline above */}
 
-        {/* Barbell visual */}
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%' }}>
-        <BarbellVisual
-          plates={platesPerSide}
-          width={Math.max(320, screenWidth - 48)}
-          canvasWidth={screenWidth}
-          flipped={barSide === 'left'}
-        />
-      </View>
+      {/* Barbell visual (tap to manage plate availability) */}
+        <Pressable
+          onPress={() => {
+            dismissKeyboard();
+            setShowDisableModal(true);
+          }}
+          style={{ flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%' }}
+        >
+          <BarbellVisual
+            plates={platesPerSide}
+            width={Math.max(320, screenWidth - 48)}
+            canvasWidth={screenWidth}
+            flipped={barSide === 'left'}
+          />
+        </Pressable>
 
       <View style={{ marginVertical: 16, minHeight: 180, justifyContent: 'flex-start' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -826,6 +857,7 @@ function BarbellVisual({
     2.5: basePlateHeight * 0.5,
     1.25: basePlateHeight * 0.4,
     1: basePlateHeight * 0.3,
+    0.75: basePlateHeight * 0.3,
     0.5: basePlateHeight * 0.3,
     0.25: basePlateHeight * 0.3,
   };
@@ -843,6 +875,7 @@ function BarbellVisual({
     2.5: 18,
     1.25: 15,
     1: 15,
+    0.75: 15,
     0.5: 15,
     0.25: 15,
   };
@@ -940,6 +973,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#333',
     color: '#fff',
     borderColor: '#555',
+  },
+  headerTitle: {
+    color: '#505050',
+    fontSize: 35,
+    lineHeight: 30,
+    fontWeight: '900',
   },
   topRow: {
     flexDirection: 'row',
