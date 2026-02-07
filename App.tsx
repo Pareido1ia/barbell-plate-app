@@ -328,59 +328,108 @@ function AppContent() {
   // - If weightNeeded is within a single full set (78.75 kg), use greedy with max 1 of each plate.
   // - If it exceeds that, place one of each plate first, then greedy-add duplicates from heaviest down.
         function calculatePlates(weightNeeded: number) {
-          const totalSingleSet = enabledPlateOptions.reduce((sum, p) => sum + p.weight, 0);
-          const plateCounts: { [weight: number]: { color: string; count: number } } = {};
-          const baseCounts: { [weight: number]: number } = {}; // counts that must be preserved (the “one of each” set)
           const epsilon = 0.0001; // float guard
+          const fractionalWeights = new Set([5, 2.5, 1.25, 1, 0.75, 0.5, 0.25]); // "non full height" plates
+          const plateCounts: { [weight: number]: { color: string; count: number } } = {};
+
           const addPlateCount = (plateWeight: number, delta: number) => {
             if (delta === 0) return;
-            const plate = enabledPlateOptions.find((p) => p.weight === plateWeight)!;
+            const plate = enabledPlateOptions.find((p) => p.weight === plateWeight);
+            if (!plate) return;
+            const fractional = fractionalWeights.has(plateWeight);
+            const current = plateCounts[plateWeight]?.count || 0;
+            // Cap fractional/small plates to max 1 per side
+            const allowedDelta = fractional ? Math.max(0, 1 - current) : delta;
+            if (allowedDelta <= 0) return;
             if (!plateCounts[plateWeight]) {
               plateCounts[plateWeight] = { color: plate.color, count: 0 };
             }
-            plateCounts[plateWeight].count += delta;
+            plateCounts[plateWeight].count += allowedDelta;
           };
 
-          if (weightNeeded <= totalSingleSet + epsilon) {
-            // Greedy without duplicates (max 1 each)
-            let remaining = weightNeeded;
-            for (const plate of enabledPlateOptions) {
-              if (remaining + epsilon >= plate.weight) {
-                addPlateCount(plate.weight, 1);
-                remaining = Math.round((remaining - plate.weight) * 100) / 100;
-              }
-            }
-          } else {
-            // Phase A: one of each (record as base that should not be consolidated away)
-            enabledPlateOptions.forEach((plate) => {
+          let remaining = weightNeeded;
+          const fullPlates = [...enabledPlateOptions].filter((p) => !fractionalWeights.has(p.weight)).sort((a, b) => b.weight - a.weight);
+          const fractionalPlates = [...enabledPlateOptions].filter((p) => fractionalWeights.has(p.weight)).sort((a, b) => b.weight - a.weight);
+
+          // First pass: place at most one of each full-height plate (largest to smallest)
+          for (const plate of fullPlates) {
+            if (remaining + epsilon >= plate.weight) {
               addPlateCount(plate.weight, 1);
-              baseCounts[plate.weight] = 1;
-            });
-            // Phase B: greedy duplicates on the remainder
-            let remaining = Math.round((weightNeeded - totalSingleSet) * 100) / 100;
-            for (const plate of enabledPlateOptions) {
-              if (remaining + epsilon < plate.weight) continue;
-              const extra = Math.floor((remaining + epsilon) / plate.weight);
-              if (extra > 0) {
-                addPlateCount(plate.weight, extra);
-                remaining = Math.round((remaining - plate.weight * extra) * 100) / 100;
+              remaining = Math.round((remaining - plate.weight) * 100) / 100;
+            }
+          }
+
+          // Second pass: try each fractional plate once, descending
+          for (const plate of fractionalPlates) {
+            if (remaining + epsilon >= plate.weight) {
+              addPlateCount(plate.weight, 1);
+              remaining = Math.round((remaining - plate.weight) * 100) / 100;
+            }
+          }
+
+          // Third pass: if weight remains, continue filling with full-height plates (allow multiples)
+          for (const plate of fullPlates) {
+            while (remaining + epsilon >= plate.weight) {
+              addPlateCount(plate.weight, 1);
+              remaining = Math.round((remaining - plate.weight) * 100) / 100;
+            }
+          }
+
+          // Optimization: prefer replacing small plates with an extra full-height plate when it reduces the remaining gap.
+          const currentTotal = () =>
+            Object.entries(plateCounts).reduce((sum, [w, info]) => sum + parseFloat(w) * info.count, 0);
+
+          const tryImproveWithSwap = (): boolean => {
+            let best: { plateWeight: number; subset: number[]; newRemaining: number } | null = null;
+            const fractionalUsed = Object.entries(plateCounts)
+              .filter(([w, info]) => fractionalWeights.has(parseFloat(w)) && info.count > 0)
+              .map(([w]) => parseFloat(w));
+
+            if (fractionalUsed.length === 0) return false;
+
+            const totalNow = currentTotal();
+            const remainingGap = Math.round((weightNeeded - totalNow) * 100) / 100;
+            if (remainingGap <= epsilon) return false;
+
+            const subsets: number[][] = [[]];
+            for (const w of fractionalUsed) {
+              const curLen = subsets.length;
+              for (let i = 0; i < curLen; i++) {
+                subsets.push([...subsets[i], w]);
               }
             }
 
-            // Consolidate only EXCESS small-plate pairs upward; never consume the base 1-per-plate set.
-            const ascWeights = [...enabledPlateOptions].map((p) => p.weight).reverse(); // lightest -> heaviest
-            for (let i = 0; i < ascWeights.length - 1; i++) {
-              const cur = ascWeights[i];
-              const next = ascWeights[i + 1];
-              const curCount = plateCounts[cur]?.count || 0;
-              const base = baseCounts[cur] || 0;
-              const excess = curCount - base;
-              const pairs = Math.floor(excess / 2);
-              if (pairs > 0) {
-                addPlateCount(cur, -pairs * 2);
-                addPlateCount(next, pairs);
+            for (const plate of fullPlates) {
+              for (const subset of subsets) {
+                if (subset.length === 0) continue;
+                const subsetWeight = subset.reduce((s, w) => s + w, 0);
+                const newRemaining = Math.round((remainingGap + subsetWeight - plate.weight) * 100) / 100;
+                if (newRemaining < -epsilon) continue; // don't overshoot target
+                if (Math.abs(newRemaining) + epsilon < Math.abs(remainingGap)) {
+                  if (!best || Math.abs(newRemaining) < Math.abs(best.newRemaining)) {
+                    best = { plateWeight: plate.weight, subset, newRemaining };
+                  }
+                }
               }
             }
+
+            if (best) {
+              // apply swap
+              for (const w of best.subset) {
+                if (plateCounts[w]) {
+                  plateCounts[w].count -= 1;
+                  if (plateCounts[w].count <= 0) delete plateCounts[w];
+                }
+              }
+              addPlateCount(best.plateWeight, 1);
+              return true;
+            }
+            return false;
+          };
+
+          // Iterate swaps until no further improvement
+          while (tryImproveWithSwap()) {
+            // loop
           }
 
           return enabledPlateOptions
@@ -919,7 +968,7 @@ function BarbellVisual({
         />
         {/* Bar end (right or left depending on flip) */}
         <Rect
-          x={flipped ? 0 : width - endWidth}
+          x={flipped ? 0 : width - endWidth - 10}
           y={height / 2 - barThickness}
           width={endWidth * 1.5}
           height={barThickness * 2}
