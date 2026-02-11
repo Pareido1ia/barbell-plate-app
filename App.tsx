@@ -449,7 +449,7 @@ function AppContent() {
       <View style={[styles.container, styles.darkBg, { paddingTop: 14 + insets.top }]}>
       {/* Header actions */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8, borderLeftColor: '#444', borderLeftWidth: 4, paddingLeft: 12 }}>
-        <Text style={styles.headerTitle}>ARRR Bar</Text>
+        <Text style={styles.headerTitle}>RARR Bar</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity
             onPress={() => {
